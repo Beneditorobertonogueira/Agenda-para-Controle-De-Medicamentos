@@ -1,1 +1,36 @@
+name: Deploy versão web (GitHub Pages)
 
+on:
+  push:
+    branches: [main]
+  # Permite disparar manualmente pela aba Actions do GitHub, sem precisar de push
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-e-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar o código do repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar o Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Instalar as dependências
+        run: flutter pub get
+
+      - name: Gerar o build web
+        run: flutter build web --base-href /${{ github.event.repository.name }}/
+
+      - name: Publicar no branch gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: build/web
