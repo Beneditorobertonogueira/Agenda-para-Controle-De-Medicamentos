@@ -1,1 +1,86 @@
 
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function autenticado() {
+      return request.auth != null;
+    }
+
+    function ehDono(pacienteId) {
+      return autenticado() && request.auth.uid == pacienteId;
+    }
+
+    function ehCuidadorAtivo(pacienteId) {
+      return autenticado() && exists(/databases/$(database)/documents/vinculo_cuidador/$(pacienteId + '_' + request.auth.uid));
+    }
+
+    match /paciente/{pacienteId} {
+      allow read, write: if ehDono(pacienteId);
+    }
+
+    match /receita/{receitaId} {
+      allow read: if autenticado() && resource.data.paciente_id == request.auth.uid;
+      allow create: if autenticado() && request.resource.data.paciente_id == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /medicamento/{medicamentoId} {
+      allow read: if autenticado() && (
+        get(/databases/$(database)/documents/receita/$(resource.data.receita_id)).data.paciente_id == request.auth.uid ||
+        ehCuidadorAtivo(get(/databases/$(database)/documents/receita/$(resource.data.receita_id)).data.paciente_id)
+      );
+      allow create: if autenticado();
+      allow update, delete: if autenticado() &&
+        get(/databases/$(database)/documents/receita/$(resource.data.receita_id)).data.paciente_id == request.auth.uid;
+    }
+
+    match /horario/{horarioId} {
+      allow read: if autenticado() && (
+        resource.data.paciente_id == request.auth.uid ||
+        ehCuidadorAtivo(resource.data.paciente_id)
+      );
+      allow create: if autenticado() && request.resource.data.paciente_id == request.auth.uid;
+      allow update, delete: if autenticado() && resource.data.paciente_id == request.auth.uid;
+    }
+
+    match /dose_registro/{doseId} {
+      allow read: if autenticado() && (
+        resource.data.paciente_id == request.auth.uid ||
+        ehCuidadorAtivo(resource.data.paciente_id)
+      );
+      allow update: if autenticado()
+        && resource.data.paciente_id == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'data_hora_confirmada']);
+      allow create: if autenticado() && request.resource.data.paciente_id == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /convite_cuidador/{codigo} {
+      allow read: if autenticado();
+      allow create: if autenticado() && request.resource.data.paciente_id == request.auth.uid;
+      allow update: if autenticado();
+      allow delete: if false;
+    }
+
+    match /vinculo_cuidador/{vinculoId} {
+      allow read: if autenticado() && (
+        resource.data.paciente_id == request.auth.uid ||
+        resource.data.cuidador_id == request.auth.uid
+      );
+      allow create: if autenticado() && request.resource.data.cuidador_id == request.auth.uid;
+      allow update: if autenticado() && resource.data.paciente_id == request.auth.uid;
+      allow delete: if false;
+    }
+
+    match /alertas_cuidador/{alertaId} {
+      allow read, write: if false;
+    }
+
+    match /cuidador/{cuidadorId} {
+      allow read, write: if autenticado() && request.auth.uid == cuidadorId;
+    }
+  }
+}
